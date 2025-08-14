@@ -1,8 +1,4 @@
-/* Diagonal Squares — Web (fixed)
- * - Default board size 15×15 on first render.
- * - Fixed template-string bug in finishGame (no Python f-strings).
- * - Countdown resets ONLY when enhanced rule is active and the affected player places a square.
- */
+/* Diagonal Squares — Web (line-limit + diagonal toggle) */
 (() => {
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
   const DIAG_DIRS = [[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -17,14 +13,12 @@
   });
 
   class Player {
-    constructor(pid, name, isComputer=false){
-      this.pid = pid; this.name = name; this.isComputer = isComputer;
-    }
+    constructor(pid, name, isComputer=false){ this.pid = pid; this.name = name; this.isComputer = isComputer; }
     otherId(){ return this.pid === 1 ? 2 : 1; }
   }
 
   class Board {
-    constructor(size=40){
+    constructor(size=15){
       this.size = size;
       this.grid = Array.from({length:size}, () => Array(size).fill(0));
     }
@@ -44,12 +38,6 @@
       }
       return false;
     }
-    isValidMove(playerId, x, y){
-      if(!this.inBounds(x,y)) return false;
-      if(!this.isEmpty(x,y)) return false;
-      if(this.hasDiagOccupied(x,y)) return false;
-      return true;
-    }
     orthogonalNeighborsCount(x,y){
       let c=0;
       for(const [dx,dy] of ORTHO_DIRS){
@@ -58,19 +46,17 @@
       }
       return c;
     }
-    legalMovesBase(){
+    legalEmpties(){
       const res=[];
       for(let y=0;y<this.size;y++){
         for(let x=0;x<this.size;x++){
-          if(this.grid[y][x]===0 && !this.hasDiagOccupied(x,y)){
-            res.push([x,y]);
-          }
+          if(this.grid[y][x]===0) res.push([x,y]);
         }
       }
       return res;
     }
     placeAndScore(playerId, x, y){
-      if(!this.isValidMove(playerId,x,y)) throw new Error("Недопустимый ход");
+      if(!this.inBounds(x,y) || !this.isEmpty(x,y)) throw new Error("Недопустимый ход");
       this.grid[y][x] = playerId;
       return 1 + this.orthogonalNeighborsCount(x,y);
     }
@@ -96,10 +82,25 @@
       this.ruleActive = false;
       this.ruleForPid = null;
       this.nextRuleTs = null;
+      this.maxLineLen = this.board.size;
+      this.diagEnabled = true;
     }
     currentPlayer(){ return this.current; }
     otherPlayer(){ return this.current.pid===1 ? this.p2 : this.p1; }
+    setLineLimit(n){ this.maxLineLen = Math.max(1, Math.min(this.board.size, n|0)); }
+    setDiagEnabled(flag){ this.diagEnabled = !!flag; }
     isOrthAdj(a,b){ return a && b && ((Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1])) === 1); }
+    _exceedsLineLimit(x,y){
+      const g = this.board.grid, S = this.board.size, L = this.maxLineLen;
+      let len = 1;
+      for(let xx=x-1; xx>=0 && g[y][xx]!==0; xx--) len++;
+      for(let xx=x+1; xx<S && g[y][xx]!==0; xx++) len++;
+      if(len > L) return true;
+      len = 1;
+      for(let yy=y-1; yy>=0 && g[yy][x]!==0; yy--) len++;
+      for(let yy=y+1; yy<S && g[yy][x]!==0; yy++) len++;
+      return len > L;
+    }
     _violatesP2FirstAdjacency(playerId, x, y){
       if(playerId !== 2) return false;
       if(this.p2HasMoved) return false;
@@ -112,13 +113,18 @@
       return this.board.hasOrthOccupied(x,y);
     }
     isValidMoveFor(playerId, x, y){
-      if(!this.board.isValidMove(playerId, x, y)) return false;
-      if(this._violatesP2FirstAdjacency(playerId, x, y)) return false;
+      if(!(this.board.inBounds(x,y) && this.board.isEmpty(x,y))) return false;
+      if(this.diagEnabled && this.board.hasDiagOccupied(x,y)) return false;
       if(this._violatesPeriodicRule(playerId, x, y)) return false;
+      if(this._violatesP2FirstAdjacency(playerId, x, y)) return false;
+      if(this._exceedsLineLimit(x, y)) return false;
       return true;
     }
     legalMovesFor(playerId){
-      let moves = this.board.legalMovesBase();
+      let moves = this.board.legalEmpties();
+      if(this.diagEnabled){
+        moves = moves.filter(([x,y]) => !this.board.hasDiagOccupied(x,y));
+      }
       if(this.ruleActive && this.ruleForPid === playerId){
         moves = moves.filter(([x,y]) => !this.board.hasOrthOccupied(x,y));
       }
@@ -126,6 +132,7 @@
         const [fx,fy] = this.p1FirstMove;
         moves = moves.filter(([x,y]) => (Math.abs(x-fx)+Math.abs(y-fy)) !== 1);
       }
+      moves = moves.filter(([x,y]) => !this._exceedsLineLimit(x,y));
       return moves;
     }
     hasLegalMoves(player){ return this.legalMovesFor(player.pid).length>0; }
@@ -167,19 +174,33 @@
         this.ruleForPid = this.current.pid;
       }
     }
+    clone(){
+      const g2 = new Game(this.board.clone(), new Player(1,this.p1.name,this.p1.isComputer), new Player(2,this.p2.name,this.p2.isComputer));
+      g2.current = (this.current.pid===1) ? g2.p1 : g2.p2;
+      g2.scores = {1:this.scores[1], 2:this.scores[2]};
+      g2._consecutivePasses = this._consecutivePasses;
+      g2.p1HasMoved = this.p1HasMoved;
+      g2.p2HasMoved = this.p2HasMoved;
+      g2.p1FirstMove = this.p1FirstMove ? [this.p1FirstMove[0], this.p1FirstMove[1]] : null;
+      g2.ruleIntervalSec = this.ruleIntervalSec;
+      g2.ruleActive = this.ruleActive;
+      g2.ruleForPid = this.ruleForPid;
+      g2.nextRuleTs = this.nextRuleTs;
+      g2.maxLineLen = this.maxLineLen;
+      g2.diagEnabled = this.diagEnabled;
+      return g2;
+    }
   }
 
   class AI {
     constructor(rng=Math){ this.rng = rng; }
     immediatePoints(board,x,y){ return 1 + board.orthogonalNeighborsCount(x,y); }
     _oppMovesAfter(game, me, x, y){
-      const sim = cloneGame(game);
+      const sim = game.clone();
       sim.board.grid[y][x] = me.pid;
       if(me.pid===1 && !sim.p1HasMoved){ sim.p1HasMoved = true; sim.p1FirstMove = [x,y]; }
       if(me.pid===2 && !sim.p2HasMoved){ sim.p2HasMoved = true; }
-      if(sim.ruleActive && sim.ruleForPid === me.pid){
-        sim.ruleActive = false; sim.ruleForPid = null;
-      }
+      if(sim.ruleActive && sim.ruleForPid === me.pid){ sim.ruleActive = false; sim.ruleForPid = null; }
       sim.current = (me.pid===1) ? sim.p2 : sim.p1;
       return sim.legalMovesFor(sim.current.pid).length;
     }
@@ -217,22 +238,6 @@
     }
   }
 
-  function cloneGame(g){
-    const b = g.board.clone();
-    const g2 = new Game(b, new Player(1,g.p1.name,g.p1.isComputer), new Player(2,g.p2.name,g.p2.isComputer));
-    g2.current = (g.current.pid===1) ? g2.p1 : g2.p2;
-    g2.scores = {1:g.scores[1], 2:g.scores[2]};
-    g2._consecutivePasses = g._consecutivePasses;
-    g2.p1HasMoved = g.p1HasMoved;
-    g2.p2HasMoved = g.p2HasMoved;
-    g2.p1FirstMove = g.p1FirstMove ? [g.p1FirstMove[0], g.p1FirstMove[1]] : null;
-    g2.ruleIntervalSec = g.ruleIntervalSec;
-    g2.ruleActive = g.ruleActive;
-    g2.ruleForPid = g.ruleForPid;
-    g2.nextRuleTs = g.nextRuleTs;
-    return g2;
-  }
-
   // DOM
   const elBoard = document.getElementById("board");
   const elScoreP1 = document.getElementById("scoreP1");
@@ -251,9 +256,10 @@
   const elL1    = document.getElementById("aiLevelP1");
   const elL2    = document.getElementById("aiLevelP2");
   const elInt   = document.getElementById("ruleInterval");
+  const elLim   = document.getElementById("lineLimit");
+  const elDiag  = document.getElementById("diagRule");
 
-  let game = new Game(new Board(parseInt(elSize.value, 10) || 15));
-  // Имена для стартовой панели
+  let game = new Game(new Board(parseInt(elSize.value,10) || 15));
   game.p1.name = "Игрок 1";
   game.p2.name = "Игрок 2";
 
@@ -354,6 +360,14 @@
   function clampInt(n){ if(Number.isNaN(n)) return 5; n|=0; return Math.max(5, Math.min(10,n)); }
   function desiredSize(){ const c = clampSize(parseInt(elSize.value,10)); elSize.value = String(c); return c; }
   function desiredInterval(){ const c = clampInt(parseInt(elInt.value,10)); elInt.value = String(c); return c; }
+  function desiredLineLimit(){
+    const size = clampSize(parseInt(elSize.value,10));
+    let v = parseInt(elLim.value,10);
+    if(Number.isNaN(v)) v = size;
+    v = Math.max(1, Math.min(size, v|0));
+    if(v !== parseInt(elLim.value,10)) elLim.value = String(v);
+    return v;
+  }
   function currentMode(){ return elMode.value; }
   function p1Level(){ return parseInt(elL1.value, 10) || 1; }
   function p2Level(){ return parseInt(elL2.value, 10) || 1; }
@@ -478,15 +492,30 @@
     elL1.disabled = !enabled;
     elL2.disabled = !enabled;
     elInt.disabled = !enabled;
+    elLim.disabled = !enabled;
+    elDiag.disabled = !enabled;
+  }
+
+  function refreshLineLimitMax(){
+    const size = clampSize(parseInt(elSize.value,10));
+    elLim.max = String(size);
+    if(parseInt(elLim.value,10) > size) elLim.value = String(size);
   }
 
   function newGame(){
     stopAiLoop();
     stopUITimers();
     const S = desiredSize();
+    refreshLineLimitMax();
     const interval = desiredInterval();
+    const limit = desiredLineLimit();
+    const diag = elDiag.checked;
+
     game = new Game(new Board(S));
     game.setRuleIntervalSec(interval);
+    game.setLineLimit(limit);
+    game.setDiagEnabled(diag);
+
     const mode = currentMode();
     if(mode==="HCPU"){
       game.p1 = new Player(1, "Игрок 1", false);
@@ -505,7 +534,7 @@
     maybeAutoPlay();
   }
 
-  // События
+  // Events
   document.getElementById("btnNew").addEventListener("click", newGame);
   document.getElementById("btnEnd").addEventListener("click", () => finishGame(true));
   document.getElementById("btnPass").addEventListener("click", () => {
@@ -522,13 +551,15 @@
       maybeAutoPlay();
     }
   });
-  document.getElementById("sizeInput").addEventListener("change", desiredSize);
+  document.getElementById("sizeInput").addEventListener("change", () => { desiredSize(); refreshLineLimitMax(); });
   document.getElementById("modeSelect").addEventListener("change", () => { stopAiLoop(); renderCells(); });
   document.getElementById("aiLevelP1").addEventListener("change", renderCells);
   document.getElementById("aiLevelP2").addEventListener("change", renderCells);
   document.getElementById("ruleInterval").addEventListener("change", desiredInterval);
+  document.getElementById("lineLimit").addEventListener("change", desiredLineLimit);
+  document.getElementById("diagRule").addEventListener("change", () => {});
 
-  // Первый рендер (board = 15×15)
+  // First render
   buildGrid();
   renderCells();
 })();
