@@ -71,6 +71,13 @@ body{
   color:#0f172a; background:#ffffffaa; border-color:#dbeafe;
 }
 .btn-ghost:hover{ background:#fff; }
+.btn-danger{
+  color:#fff;
+  background: linear-gradient(135deg,#f97316,#ef4444);
+  box-shadow: 0 6px 18px rgba(239,68,68,.25), 0 4px 12px rgba(249,115,22,.15);
+}
+.btn-danger:hover{ transform: translateY(-1px); }
+
 .statusbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .chip{
   display:inline-flex; align-items:center; gap:6px;
@@ -82,7 +89,8 @@ body{
 .chip-p1{ background: #e0ecff; border-color:#bfd4ff; }
 .chip-p2{ background: #ffe1e1; border-color:#ffc2c2; }
 .chip-time{ background:#e7f5ff; border-color:#c2e7ff; }
-.chip-rule{ background:#f0fdf4; border-color:#bbf7d0; }
+.chip-count{ background:#f0fdf4; border-color:#bbf7d0; }
+.chip-count.red{ background:#fee2e2; border-color:#fecaca; color:#7f1d1d; }
 .chip-turn{ background:#fef9c3; border-color:#fde68a; }
 .chip-mode{ background:#ecfdf5; border-color:#bbf7d0; }
 
