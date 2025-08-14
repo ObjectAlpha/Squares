@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Diagonal Squares — 40×40 (Web)</title>
+  <link rel="stylesheet" href="style.css" />
+  <meta name="description" content="Мини-игра на поле 40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер." />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Diagonal Squares — 40×40</h1>
+    <div class="controls">
+      <button id="btnNew" class="btn">Новая игра</button>
+      <label class="switch">
+        <input type="checkbox" id="chkAI" checked />
+        <span>Человек vs Компьютер (P2)</span>
+      </label>
+      <button id="btnPass" class="btn btn-secondary">Пас</button>
+    </div>
+    <div id="info" class="info"></div>
+  </header>
+
+  <main class="board-wrap">
+    <div id="board" class="grid"></div>
+  </main>
+
+  <footer class="footer">
+    <details>
+      <summary>Правила (кликните, чтобы раскрыть)</summary>
+      <ul>
+        <li>Поле: 40×40, изначально пустое.</li>
+        <li>P1 ходит первым. Ходы по очереди.</li>
+        <li><b>Правило диагонали:</b> ставить в клетку нельзя, если у неё есть занятые диагональные соседи (по углам). Примыкание по сторонам разрешено.</li>
+        <li>Очки за ход: <code>1 + количество занятых ортогональных соседей</code> (вверх/вниз/влево/вправо).</li>
+        <li>Если у текущего игрока нет легальных ходов — он пасует, ход переходит сопернику. Два паса подряд завершают игру.</li>
+        <li>Побеждает игрок с большим счётом; при равенстве — ничья.</li>
+      </ul>
+      <p class="note">Замечание: в браузерах исполняется JavaScript (не Java). Этот проект — чистый HTML/CSS/JavaScript и работает офлайн.</p>
+    </details>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

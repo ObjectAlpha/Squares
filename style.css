@@ -1,0 +1,115 @@
+:root{
+  --cell-size: 18px;
+  --label-size: 22px;
+  --color-grid: #e0e0e0;
+  --color-text: #333;
+  --color-bg: #fafafa;
+  --p1: #1e88e5; /* синий */
+  --p2: #e53935; /* красный */
+  --empty: #ffffff;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+.topbar{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  padding:10px 12px;
+  background:#fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.topbar h1{
+  font-size: 20px;
+  margin: 0;
+}
+.controls{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap: wrap;
+}
+.btn{
+  background:#111827;
+  color:#fff;
+  border:none;
+  padding:8px 12px;
+  border-radius:10px;
+  cursor:pointer;
+  font-size:14px;
+}
+.btn:hover{opacity:.9}
+.btn-secondary{
+  background:#4b5563;
+}
+.switch{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:14px;
+}
+.info{
+  font-size:14px;
+  color:#111;
+}
+.board-wrap{
+  padding:12px;
+  display:flex;
+  justify-content:center;
+}
+.grid{
+  display:grid;
+  grid-template-columns: repeat(41, var(--cell-size));
+  grid-auto-rows: var(--cell-size);
+  gap:0;
+  user-select:none;
+  border:1px solid var(--color-grid);
+  background:#fff;
+}
+.cell, .label{
+  width: var(--cell-size);
+  height: var(--cell-size);
+  border: 1px solid var(--color-grid);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size: 11px;
+  line-height:1;
+}
+.label{
+  background:#f7fafc;
+  color:#4b5563;
+  font-size:10px;
+}
+.corner{
+  background:#f0f4f8;
+}
+.cell{
+  background: var(--empty);
+  cursor: pointer;
+  transition: box-shadow .06s ease-out, transform .02s ease-out;
+}
+.cell:hover{
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,.12);
+}
+.cell.p1{ background: var(--p1); }
+.cell.p2{ background: var(--p2); }
+.footer{
+  padding: 10px 12px 24px;
+  font-size: 14px;
+  color:#374151;
+}
+.footer details{
+  background:#fff;
+  border-radius:10px;
+  border:1px solid #e5e7eb;
+  padding: 10px 12px;
+}
+.note{color:#6b7280; font-size:13px}
