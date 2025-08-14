@@ -1,13 +1,15 @@
 /* Diagonal Squares — Web (HTML/CSS/JS)
- * Теперь поддерживается выбор размера поля 5..40.
- * Размер применяется при нажатии «Новая игра».
+ * Новое: режим «Компьютер vs Компьютер» и уровни сложности (1..3) для P1 и P2.
+ * 1 — простой (случайный), 2 — жадный (мгновенные очки), 3 — умнее (очки и подавление ответных ходов).
+ * В CPU vs CPU между ходами пауза 0.7с.
  */
-
 (() => {
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
   const DIAG_DIRS = [[1,1],[1,-1],[-1,1],[-1,-1]];
+  const AI_VS_AI_DELAY_MS = 700;
+  const HUMAN_AI_DELAY_MS = 120;
 
-  // Баннер ошибок для быстрой диагностики
+  // Ошибки — показать баннер
   window.addEventListener("error", (e) => {
     const bar = document.createElement("div");
     bar.style.cssText = "position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#7f1d1d;padding:6px 10px;font:12px/1.2 monospace;z-index:9999;border-top:1px solid #fecaca;";
@@ -111,43 +113,64 @@
     }
   }
 
-  class SimpleAI {
+  class AI {
     constructor(rng=Math){ this.rng = rng; }
     immediatePoints(board,x,y){ return 1 + board.orthogonalNeighborsCount(x,y); }
-    chooseMove(board, me){
+
+    chooseMove(board, me, level){
       const legal = board.legalMoves(me.pid);
       if(legal.length===0) return null;
-      let bestScore = null;
-      let bestMoves = [];
-      for(const [x,y] of legal){
-        const immediate = this.immediatePoints(board,x,y);
-        const clone = board.clone();
-        clone.grid[y][x] = me.pid;
-        const oppMovesCount = clone.legalMoves(me.otherId()).length;
-        const score = immediate*10 - oppMovesCount;
-        if(bestScore===null || score>bestScore){
-          bestScore = score;
-          bestMoves = [[x,y]];
-        }else if(score===bestScore){
-          bestMoves.push([x,y]);
+      if(level === 1){
+        // Простой — случайный легальный
+        const i = Math.floor(this.rng.random()*legal.length);
+        return legal[i];
+      } else if(level === 2){
+        // Жадный — максимизирует мгновенные очки
+        let best = []; let bestPts = -1;
+        for(const [x,y] of legal){
+          const p = this.immediatePoints(board,x,y);
+          if(p > bestPts){ bestPts = p; best = [[x,y]]; }
+          else if(p === bestPts){ best.push([x,y]); }
         }
+        const i = Math.floor(this.rng.random()*best.length);
+        return best[i];
+      } else {
+        // Умнее — очки и подавление ответных ходов соперника
+        // score = pts*10 - oppMovesCount, тай-брейк: ближе к центру
+        const center = (n)=> (n-1)/2;
+        const cx = center(board.size), cy = center(board.size);
+        let bestScore = -1e9; let best = [];
+        for(const [x,y] of legal){
+          const pts = this.immediatePoints(board,x,y);
+          const clone = board.clone();
+          clone.grid[y][x] = me.pid;
+          const oppMoves = clone.legalMoves(me.otherId()).length;
+          let score = pts*10 - oppMoves;
+          // лёгкий приоритет центра
+          const dx = Math.abs(x - cx), dy = Math.abs(y - cy);
+          score += -0.01*(dx+dy);
+          if(score > bestScore){ bestScore = score; best = [[x,y]]; }
+          else if(score === bestScore){ best.push([x,y]); }
+        }
+        const i = Math.floor(this.rng.random()*best.length);
+        return best[i];
       }
-      const i = Math.floor(this.rng.random()*bestMoves.length);
-      return bestMoves[i];
     }
   }
 
-  // --- UI elements ---
+  // DOM
   const elBoard = document.getElementById("board");
   const elInfo  = document.getElementById("info");
   const elNew   = document.getElementById("btnNew");
   const elPass  = document.getElementById("btnPass");
-  const elAI    = document.getElementById("chkAI");
   const elSize  = document.getElementById("sizeInput");
+  const elMode  = document.getElementById("modeSelect");
+  const elL1    = document.getElementById("aiLevelP1");
+  const elL2    = document.getElementById("aiLevelP2");
 
-  let game = new Game();       // стартуем с 40×40 по умолчанию
-  let ai = new SimpleAI();
-  let vsAI = true;
+  let game = new Game();
+  let ai = new AI();
+  let aiLoopId = null; // id таймера для CPU vs CPU
 
   function clampSize(n){
     if(Number.isNaN(n)) return 40;
@@ -162,6 +185,9 @@
     if(c !== n) elSize.value = String(c);
     return c;
   }
+  function currentMode(){ return elMode.value; }
+  function p1Level(){ return parseInt(elL1.value, 10) || 1; }
+  function p2Level(){ return parseInt(elL2.value, 10) || 1; }
 
   function buildGrid(){
     const S = game.board.size;
@@ -207,21 +233,34 @@
 
   function updateInfo(extra=""){
     const p = game.currentPlayer();
-    let txt = `Поле: ${game.board.size}×${game.board.size}    Ход: ${p.name} (P${p.pid})    Счёт — P1: ${game.scores[1]} | P2: ${game.scores[2]}`;
-    txt += vsAI ? "    Режим: Человек vs Компьютер (P2)" : "    Режим: Человек vs Человек";
+    const mode = currentMode();
+    let modeText = (mode==="HH") ? "Человек vs Человек"
+      : (mode==="HCPU") ? "Человек vs Компьютер"
+      : "Компьютер vs Компьютер";
+    let txt = `Поле: ${game.board.size}×${game.board.size}    Ход: ${p.name} (P${p.pid})    Счёт — P1: ${game.scores[1]} | P2: ${game.scores[2]}    Режим: ${modeText}`;
+    txt += `    P1 AI Lvl=${p1Level()} | P2 AI Lvl=${p2Level()}`;
     if(extra) txt += "    " + extra;
     elInfo.textContent = txt;
   }
 
   function onCellClick(e){
     if(game.isGameOver()) return;
+    if(currentMode()==="CPUCPU") return; // клики отключены в режиме ИИ vs ИИ
     const cell = e.currentTarget;
     const x = parseInt(cell.dataset.x,10);
     const y = parseInt(cell.dataset.y,10);
 
-    if(vsAI) game.p2 = new Player(2,"Компьютер",true);
+    const mode = currentMode();
+    // Принудительно отмечаем компьютером нужного игрока в режиме HCPU
+    if(mode==="HCPU"){
+      game.p2 = new Player(2,"Компьютер",true);
+    } else {
+      game.p2.isComputer = false;
+      game.p1.isComputer = false;
+    }
     const cur = game.currentPlayer();
-    if(cur.pid===2 && cur.isComputer){
+    if(mode==="HCPU" && cur.pid===2){
+      // Игрок кликнул в ход компьютера — игнор
       return;
     }
     if(!game.board.isValidMove(cur.pid, x, y)){
@@ -236,39 +275,7 @@
       if(game.isGameOver()) return finishGame();
       updateInfo("Пас. Ход передан.");
     }
-    maybeAIMove();
-  }
-
-  function maybeAIMove(){
-    if(!vsAI) return;
-    if(game.isGameOver()) return;
-    const cur = game.currentPlayer();
-    if(cur.pid!==2) return;
-    if(!cur.isComputer) game.p2 = new Player(2,"Компьютер",true);
-
-    if(game.tryPassIfNeeded()){
-      if(game.isGameOver()) return finishGame();
-      updateInfo("Компьютер пасует. Ход передан.");
-      return;
-    }
-    setTimeout(() => {
-      const move = ai.chooseMove(game.board, game.p2);
-      if(!move){
-        if(game.tryPassIfNeeded()){
-          if(game.isGameOver()) return finishGame();
-          updateInfo("Компьютер пасует. Ход передан.");
-        }
-        return;
-      }
-      const [x,y] = move;
-      const pts = game.makeMove(x,y);
-      renderCells();
-      updateInfo(`Компьютер ходит в (${x},${y}) (+${pts}).`);
-      if(game.tryPassIfNeeded()){
-        if(game.isGameOver()) return finishGame();
-        updateInfo("Пас. Ход передан.");
-      }
-    }, 120);
+    maybeAutoPlay();
   }
 
   function finishGame(){
@@ -282,21 +289,114 @@
     }
     updateInfo("Игра завершена.");
     alert(msg);
+    stopAiLoop();
+  }
+
+  function stopAiLoop(){
+    if(aiLoopId !== null){
+      clearTimeout(aiLoopId);
+      aiLoopId = null;
+    }
+  }
+
+  function maybeAutoPlay(){
+    // HCPU: даём сделать ход компьютеру P2
+    const mode = currentMode();
+    if(game.isGameOver()){ stopAiLoop(); return; }
+
+    if(mode==="HCPU"){
+      const cur = game.currentPlayer();
+      if(cur.pid!==2) return;
+      // Берём уровень для P2
+      const lvl = p2Level();
+      // Если нет ходов — пас
+      if(game.tryPassIfNeeded()){
+        if(game.isGameOver()) return finishGame();
+        updateInfo("Компьютер пасует. Ход передан.");
+        return;
+      }
+      const move = ai.chooseMove(game.board, game.p2, lvl);
+      if(!move){
+        if(game.tryPassIfNeeded()){
+          if(game.isGameOver()) return finishGame();
+          updateInfo("Компьютер пасует. Ход передан.");
+        }
+        return;
+      }
+      const [x,y] = move;
+      const pts = game.makeMove(x,y);
+      renderCells();
+      updateInfo(`Компьютер (P2,L${lvl}) ходит в (${x},${y}) (+${pts}).`);
+      if(game.tryPassIfNeeded()){
+        if(game.isGameOver()) return finishGame();
+        updateInfo("Пас. Ход передан.");
+      }
+      return;
+    }
+
+    if(mode==="CPUCPU"){
+      // Оба — компьютеры, запускаем/продолжаем цикл с паузой
+      stopAiLoop();
+      aiLoopId = setTimeout(() => {
+        if(game.isGameOver()){ stopAiLoop(); return; }
+        const cur = game.currentPlayer();
+        // Уровень для текущего: P1 или P2
+        const lvl = (cur.pid===1) ? p1Level() : p2Level();
+        // Если нет ходов — пас
+        if(game.tryPassIfNeeded()){
+          if(game.isGameOver()) return finishGame();
+          updateInfo(`P${cur.pid} (ИИ L${lvl}) пасует. Ход передан.`);
+          return maybeAutoPlay(); // сразу планируем следующий ход другого ИИ
+        }
+        const move = ai.chooseMove(game.board, cur, lvl);
+        if(!move){
+          if(game.tryPassIfNeeded()){
+            if(game.isGameOver()) return finishGame();
+            updateInfo(`P${cur.pid} (ИИ L${lvl}) пасует. Ход передан.`);
+          }
+          return maybeAutoPlay();
+        }
+        const [x,y] = move;
+        const pts = game.makeMove(x,y);
+        renderCells();
+        updateInfo(`P${cur.pid} (ИИ L${lvl}) ходит в (${x},${y}) (+${pts}).`);
+        if(game.tryPassIfNeeded()){
+          if(game.isGameOver()) return finishGame();
+          updateInfo("Пас. Ход передан.");
+        }
+        return maybeAutoPlay();
+      }, AI_VS_AI_DELAY_MS);
+    }
   }
 
   function newGame(){
+    stopAiLoop();
     const S = desiredSize();
     game = new Game(new Board(S));
+    // пометим компьютеров в зависимости от режима
+    const mode = currentMode();
+    if(mode==="HCPU"){
+      game.p2 = new Player(2, "Компьютер", true);
+      game.p1 = new Player(1, "Игрок 1", false);
+    } else if(mode==="CPUCPU"){
+      game.p1 = new Player(1, "Компьютер 1", true);
+      game.p2 = new Player(2, "Компьютер 2", true);
+    } else {
+      game.p1 = new Player(1, "Игрок 1", false);
+      game.p2 = new Player(2, "Игрок 2", false);
+    }
     buildGrid();
     renderCells();
     updateInfo("Новая партия начата.");
-    if(vsAI && game.currentPlayer().pid===2) maybeAIMove();
+    maybeAutoPlay();
   }
 
   // События
-  elNew.addEventListener("click", () => newGame());
-  elPass.addEventListener("click", () => {
+  document.getElementById("btnNew").addEventListener("click", () => newGame());
+  document.getElementById("btnPass").addEventListener("click", () => {
     if(game.isGameOver()) return;
+    const mode = currentMode();
+    if(mode==="CPUCPU"){ alert("В режиме ИИ vs ИИ пас делает сам ИИ."); return; }
     if(game.hasLegalMoves(game.currentPlayer())){
       alert("Пас невозможен: у вас есть легальные ходы.");
       return;
@@ -304,19 +404,18 @@
     if(game.tryPassIfNeeded()){
       if(game.isGameOver()) return finishGame();
       updateInfo("Пас. Ход передан.");
-      maybeAIMove();
+      maybeAutoPlay();
     }
   });
-  elAI.addEventListener("change", (e) => {
-    vsAI = !!e.target.checked;
+  document.getElementById("sizeInput").addEventListener("change", () => desiredSize());
+  document.getElementById("modeSelect").addEventListener("change", () => {
+    stopAiLoop();
     updateInfo();
   });
-  elSize.addEventListener("change", () => {
-    // Ничего не перерисовываем до «Новая игра», только валидируем ввод
-    desiredSize();
-  });
+  document.getElementById("aiLevelP1").addEventListener("change", () => updateInfo());
+  document.getElementById("aiLevelP2").addEventListener("change", () => updateInfo());
 
-  // Первая отрисовка (40×40 по умолчанию)
+  // Первая отрисовка
   buildGrid();
   renderCells();
   updateInfo();

@@ -30,6 +30,7 @@ body{
   display:flex; align-items:center; gap:12px; flex-wrap: wrap;
 }
 .size input{ width:70px; padding:6px 8px; border:1px solid #d1d5db; border-radius:8px; }
+.mode select, .ai select{ padding:6px 8px; border:1px solid #d1d5db; border-radius:8px; }
 .btn{
   background:#111827; color:#fff; border:none; padding:8px 12px;
   border-radius:10px; cursor:pointer; font-size:14px;

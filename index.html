@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Diagonal Squares — 5×5…40×40 (Web)</title>
   <link rel="stylesheet" href="style.css" />
-  <meta name="description" content="Мини-игра на поле 5×5…40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер." />
+  <meta name="description" content="Мини-игра на поле 5×5…40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер, Компьютер vs Компьютер." />
 </head>
 <body>
   <header class="topbar">
@@ -15,11 +15,35 @@
         Размер:&nbsp;
         <input id="sizeInput" type="number" min="5" max="40" value="40" />
       </label>
-      <button id="btnNew" class="btn">Новая игра</button>
-      <label class="switch">
-        <input type="checkbox" id="chkAI" checked />
-        <span>Человек vs Компьютер (P2)</span>
+
+      <label class="mode">
+        Режим:&nbsp;
+        <select id="modeSelect">
+          <option value="HH">Человек vs Человек</option>
+          <option value="HCPU" selected>Человек vs Компьютер</option>
+          <option value="CPUCPU">Компьютер vs Компьютер</option>
+        </select>
       </label>
+
+      <label class="ai ai-p1" title="Уровень умности P1 (1–3)">
+        P1 AI:&nbsp;
+        <select id="aiLevelP1">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+        </select>
+      </label>
+
+      <label class="ai ai-p2" title="Уровень умности P2 (1–3)">
+        P2 AI:&nbsp;
+        <select id="aiLevelP2">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+        </select>
+      </label>
+
+      <button id="btnNew" class="btn">Новая игра</button>
       <button id="btnPass" class="btn btn-secondary">Пас</button>
     </div>
     <div id="info" class="info"></div>
@@ -40,7 +64,7 @@
         <li>Если у текущего игрока нет легальных ходов — он пасует, ход переходит сопернику. Два паса подряд завершают игру.</li>
         <li>Побеждает игрок с большим счётом; при равенстве — ничья.</li>
       </ul>
-      <p class="note">Проект работает на чистом HTML/CSS/JavaScript и не требует сервера.</p>
+      <p class="note">Режим «Компьютер vs Компьютер» играет сам с паузой 0,7 сек между ходами. Уровень «умности» каждого компьютера настраивается отдельно (1–3).</p>
     </details>
   </footer>
 
