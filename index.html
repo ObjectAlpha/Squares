@@ -5,28 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Diagonal Squares — 5×5…40×40 (Web)</title>
   <link rel="stylesheet" href="style.css" />
-  <meta name="description" content="Мини-игра на поле 5×5…40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер, Компьютер vs Компьютер." />
+  <meta name="description" content="Мини-игра на поле 5×5…40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер, Компьютер vs Компьютер. Секундомер партии." />
 </head>
 <body>
   <header class="topbar">
-    <h1>Diagonal Squares — 5×5…40×40</h1>
+    <div class="brand">
+      <div class="logo">▣</div>
+      <h1>Diagonal Squares</h1>
+    </div>
+
     <div class="controls">
       <label class="size">
-        Размер:&nbsp;
+        Размер
         <input id="sizeInput" type="number" min="5" max="40" value="40" />
       </label>
 
       <label class="mode">
-        Режим:&nbsp;
+        Режим
         <select id="modeSelect">
-          <option value="HH">Человек vs Человек</option>
-          <option value="HCPU" selected>Человек vs Компьютер</option>
-          <option value="CPUCPU">Компьютер vs Компьютер</option>
+          <option value="HH">Человек ↔ Человек</option>
+          <option value="HCPU" selected>Человек ↔ Компьютер</option>
+          <option value="CPUCPU">Компьютер ↔ Компьютер</option>
         </select>
       </label>
 
       <label class="ai ai-p1" title="Уровень умности P1 (1–3)">
-        P1 AI:&nbsp;
+        P1 AI
         <select id="aiLevelP1">
           <option value="1">1</option>
           <option value="2">2</option>
@@ -35,7 +39,7 @@
       </label>
 
       <label class="ai ai-p2" title="Уровень умности P2 (1–3)">
-        P2 AI:&nbsp;
+        P2 AI
         <select id="aiLevelP2">
           <option value="1">1</option>
           <option value="2">2</option>
@@ -43,10 +47,21 @@
         </select>
       </label>
 
-      <button id="btnNew" class="btn">Новая игра</button>
-      <button id="btnPass" class="btn btn-secondary">Пас</button>
+      <button id="btnNew" class="btn btn-primary">
+        <span class="ico">⟳</span> Новая игра
+      </button>
+      <button id="btnPass" class="btn btn-ghost">
+        <span class="ico">⏭</span> Пас
+      </button>
     </div>
-    <div id="info" class="info"></div>
+
+    <div class="statusbar">
+      <span class="chip chip-p1">P1: <b id="scoreP1">0</b></span>
+      <span class="chip chip-p2">P2: <b id="scoreP2">0</b></span>
+      <span class="chip chip-time">⏱ <b id="timer">00:00</b></span>
+      <span class="chip chip-turn">Ход: <b id="turnWho">P1</b></span>
+      <span class="chip chip-mode" id="modeChip">Режим</span>
+    </div>
   </header>
 
   <main class="board-wrap">
@@ -59,12 +74,12 @@
       <ul>
         <li>Поле: от 5×5 до 40×40, изначально пустое.</li>
         <li>P1 ходит первым. Ходы по очереди.</li>
-        <li><b>Правило диагонали:</b> ставить в клетку нельзя, если у неё есть занятые диагональные соседи (по углам). Примыкание по сторонам разрешено.</li>
-        <li>Очки за ход: <code>1 + количество занятых ортогональных соседей</code> (вверх/вниз/влево/вправо).</li>
-        <li>Если у текущего игрока нет легальных ходов — он пасует, ход переходит сопернику. Два паса подряд завершают игру.</li>
+        <li><b>Правило диагонали:</b> ставить нельзя, если у клетки есть занятые диагональные соседи.</li>
+        <li>Очки за ход: <code>1 + число занятых ортогональных соседей</code>.</li>
+        <li>Если у текущего игрока нет легальных ходов — пасует. Два паса подряд завершают игру.</li>
         <li>Побеждает игрок с большим счётом; при равенстве — ничья.</li>
       </ul>
-      <p class="note">Режим «Компьютер vs Компьютер» играет сам с паузой 0,7 сек между ходами. Уровень «умности» каждого компьютера настраивается отдельно (1–3).</p>
+      <p class="note">В режиме «Компьютер ↔ Компьютер» между ходами пауза 0.7 сек. Секундомер считает общее время партии.</p>
     </details>
   </footer>
 
