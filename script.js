@@ -1,11 +1,7 @@
 /* Diagonal Squares — Web
- * Исправлено срабатывание «усиленного» правила: добавлен ОБРАТНЫЙ ОТСЧЁТ.
- * Когда счётчик достигает 0 — он краснеет, и для игрока на ходу включается
- * запрет ставить вплотную (по стороне) к любой занятой клетке, пока кто-то не поставит фишку.
- * После любой постановки фишки краснота убирается и начинается новый отсчёт.
- * Добавлена кнопка «Завершить».
- * Настройки (размер, режим, ИИ, интервал) блокируются на время партии.
- * Сохранены предыдущие ограничения: базовое правило диагонали и «первый ход P2 — не вплотную к первому ходу P1».
+ * Изменения:
+ * - Отсчёт до усиления сбрасывается ТОЛЬКО если усиление активно и фишку ставит игрок, на которого действует запрет.
+ * - Везде заменены P1/P2 на «Игрок 1/Игрок 2» (в UI/сообщениях).
  */
 (() => {
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
@@ -99,11 +95,11 @@
       this.p1HasMoved = false;
       this.p2HasMoved = false;
       this.p1FirstMove = null;
-      // Усиленное правило с таймером
+      // Усиление
       this.ruleIntervalSec = 5;
       this.ruleActive = false;
       this.ruleForPid = null;
-      this.nextRuleTs = null;     // когда правило сработает (ms)
+      this.nextRuleTs = null;
     }
     currentPlayer(){ return this.current; }
     otherPlayer(){ return this.current.pid===1 ? this.p2 : this.p1; }
@@ -138,20 +134,25 @@
       return moves;
     }
     hasLegalMoves(player){ return this.legalMovesFor(player.pid).length>0; }
+
+    /** Делает ход. Возвращает { pts, ruleReset } */
     makeMove(x,y){
-      const pts = this.board.placeAndScore(this.current.pid, x, y);
-      if(this.current.pid===1 && !this.p1HasMoved){
-        this.p1HasMoved = true; this.p1FirstMove = [x,y];
-      } else if(this.current.pid===2 && !this.p2HasMoved){
-        this.p2HasMoved = true;
-      }
-      this.scores[this.current.pid] += pts;
+      const pid = this.current.pid;
+      const pts = this.board.placeAndScore(pid, x, y);
+      if(pid===1 && !this.p1HasMoved){ this.p1HasMoved = true; this.p1FirstMove = [x,y]; }
+      else if(pid===2 && !this.p2HasMoved){ this.p2HasMoved = true; }
+      this.scores[pid] += pts;
       this._consecutivePasses = 0;
-      // Сброс усиления после ЛЮБОЙ постановки
-      if(this.ruleActive){ this.ruleActive = false; this.ruleForPid = null; }
+      // Сбрасываем усиление ТОЛЬКО если оно активно и ход делает тот, на кого оно действует
+      let ruleReset = false;
+      if(this.ruleActive && this.ruleForPid === pid){
+        this.ruleActive = false; this.ruleForPid = null;
+        ruleReset = true;
+      }
       this.current = this.otherPlayer();
-      return pts;
+      return { pts, ruleReset };
     }
+
     tryPassIfNeeded(){
       if(!this.hasLegalMoves(this.current)){
         this._consecutivePasses += 1;
@@ -167,7 +168,6 @@
       if(this.scores[2] > this.scores[1]) return 2;
       return null;
     }
-    // Таймер усиления
     setRuleIntervalSec(sec){ this.ruleIntervalSec = sec; }
     scheduleNextRule(nowMs){ this.nextRuleTs = nowMs + this.ruleIntervalSec*1000; }
     pollRule(nowMs){
@@ -181,15 +181,20 @@
   class AI {
     constructor(rng=Math){ this.rng = rng; }
     immediatePoints(board,x,y){ return 1 + board.orthogonalNeighborsCount(x,y); }
+
     _oppMovesAfter(game, me, x, y){
       const sim = cloneGame(game);
       sim.board.grid[y][x] = me.pid;
       if(me.pid===1 && !sim.p1HasMoved){ sim.p1HasMoved = true; sim.p1FirstMove = [x,y]; }
       if(me.pid===2 && !sim.p2HasMoved){ sim.p2HasMoved = true; }
-      if(sim.ruleActive){ sim.ruleActive = false; sim.ruleForPid = null; }
+      // Сброс усиления только если ходит именно тот, на кого действует
+      if(sim.ruleActive && sim.ruleForPid === me.pid){
+        sim.ruleActive = false; sim.ruleForPid = null;
+      }
       sim.current = (me.pid===1) ? sim.p2 : sim.p1;
       return sim.legalMovesFor(sim.current.pid).length;
     }
+
     chooseMove(game, me, level){
       const legal = game.legalMovesFor(me.pid);
       if(legal.length===0) return null;
@@ -263,9 +268,8 @@
   let ai = new AI();
   let aiLoopId = null;
 
-  // Таймеры
   let startTimeMs = null;
-  let uiTimerId = null; // обновляет и время партии, и обратный отсчёт
+  let uiTimerId = null;
 
   function formatDuration(ms){
     const total = Math.floor(ms/1000);
@@ -280,13 +284,10 @@
     stopUITimers();
     startTimeMs = Date.now();
     elTimer.textContent = "00:00";
-    // первый запуск усиления через N секунд
     game.scheduleNextRule(Date.now());
     uiTimerId = setInterval(() => {
       const now = Date.now();
-      // время партии
       elTimer.textContent = formatDuration(now - startTimeMs);
-      // логика усиления + обратный отсчёт
       game.pollRule(now);
       updateCountdown(now);
     }, 100);
@@ -297,49 +298,23 @@
 
   function updateCountdown(nowMs){
     if(game.ruleActive){
-      // Правило активно до постановки фишки — показываем 0 и красный чип
       elCountdown.textContent = "0.0с";
       elCountChip.classList.add("red");
     } else if(game.nextRuleTs!==null){
       const rem = Math.max(0, game.nextRuleTs - nowMs);
-      const secs = Math.ceil(rem/100) / 10; // десятые доли
+      const secs = Math.ceil(rem/100) / 10;
       elCountdown.textContent = secs.toFixed(1) + "с";
-      if(rem <= 0){
-        // В этот тик правило активируется в pollRule(); окрасим в красный
-        elCountChip.classList.add("red");
-      } else {
-        elCountChip.classList.remove("red");
-      }
+      if(rem <= 0) elCountChip.classList.add("red");
+      else elCountChip.classList.remove("red");
     } else {
       elCountdown.textContent = "—";
       elCountChip.classList.remove("red");
     }
   }
 
-  function renderCells(){
-    const S = game.board.size;
-    elBoard.style.gridTemplateColumns = `repeat(${S+1}, var(--cell-size))`;
-    const nodes = elBoard.children;
-    for(let y=0;y<S;y++){
-      for(let x=0;x<S;x++){
-        const idx = (y+1)*(S+1) + (x+1);
-        const el = nodes[idx];
-        if(!el || !el.classList || !el.classList.contains("cell")) continue;
-        el.classList.remove("p1","p2");
-        const pid = game.board.grid[y][x];
-        if(pid===1) el.classList.add("p1");
-        else if(pid===2) el.classList.add("p2");
-      }
-    }
-    elScoreP1.textContent = game.scores[1];
-    elScoreP2.textContent = game.scores[2];
-    elTurnWho.textContent = "P"+game.currentPlayer().pid;
-    const mode = currentMode();
-    elModeChip.textContent = (mode==="HH")? "Человек↔Человек" : (mode==="HCPU")? "Человек↔Компьютер" : "Компьютер↔Компьютер";
-  }
-
   function buildGrid(){
     const S = game.board.size;
+    elBoard.style.gridTemplateColumns = `repeat(${S+1}, var(--cell-size))`;
     elBoard.innerHTML = "";
     for(let y=0;y<=S;y++){
       for(let x=0;x<=S;x++){
@@ -363,6 +338,28 @@
     }
   }
 
+  function renderCells(){
+    const S = game.board.size;
+    const nodes = elBoard.children;
+    for(let y=0;y<S;y++){
+      for(let x=0;x<S;x++){
+        const idx = (y+1)*(S+1) + (x+1);
+        const el = nodes[idx];
+        if(!el.classList.contains("cell")) continue;
+        el.classList.remove("p1","p2");
+        const pid = game.board.grid[y][x];
+        if(pid===1) el.classList.add("p1");
+        else if(pid===2) el.classList.add("p2");
+      }
+    }
+    elScoreP1.textContent = game.scores[1];
+    elScoreP2.textContent = game.scores[2];
+    // «Ход: …» — показываем имя игрока (Игрок/Компьютер)
+    elTurnWho.textContent = game.currentPlayer().name;
+    const mode = currentMode();
+    elModeChip.textContent = (mode==="HH")? "Человек↔Человек" : (mode==="HCPU")? "Человек↔Компьютер" : "Компьютер↔Компьютер";
+  }
+
   function clampSize(n){ if(Number.isNaN(n)) return 40; n|=0; return Math.max(5, Math.min(40,n)); }
   function clampInt(n){ if(Number.isNaN(n)) return 5; n|=0; return Math.max(5, Math.min(10,n)); }
   function desiredSize(){ const c = clampSize(parseInt(elSize.value,10)); elSize.value = String(c); return c; }
@@ -381,9 +378,9 @@
     const w = game.winner();
     let msg;
     if(w===null){
-      msg = (manual? "Партия завершена досрочно. " : "") + `Ничья! Итоговый счёт: P1=${game.scores[1]}  P2=${game.scores[2]}\nДлительность партии: ${elapsed}`;
+      msg = (manual? "Партия завершена досрочно. " : "") + f"Ничья! Итоговый счёт: Игрок 1={game.scores[1]}  Игрок 2={game.scores[2]}\nДлительность партии: {elapsed}";
     }else{
-      msg = (manual? "Партия завершена досрочно. " : "") + `Победил P${w}! Итоговый счёт: P1=${game.scores[1]}  P2=${game.scores[2]}\nДлительность партии: ${elapsed}`;
+      msg = (manual? "Партия завершена досрочно. " : "") + f"Победил Игрок {w}! Итоговый счёт: Игрок 1={game.scores[1]}  Игрок 2={game.scores[2]}\nДлительность партии: {elapsed}";
     }
     alert(msg);
     setControlsEnabled(true);
@@ -411,9 +408,8 @@
           renderCells();
           return;
         }
-        game.makeMove(...move);
-        // переназначаем обратный отсчёт
-        game.scheduleNextRule(Date.now());
+        const res = game.makeMove(...move);
+        if(res.ruleReset) game.scheduleNextRule(Date.now());
         renderCells();
         if(game.tryPassIfNeeded()){
           if(game.isGameOver()) return finishGame();
@@ -442,8 +438,8 @@
           }
           return maybeAutoPlay();
         }
-        game.makeMove(...move);
-        game.scheduleNextRule(Date.now());
+        const res = game.makeMove(...move);
+        if(res.ruleReset) game.scheduleNextRule(Date.now());
         renderCells();
         if(game.tryPassIfNeeded()){
           if(game.isGameOver()) return finishGame();
@@ -461,10 +457,12 @@
     const y = parseInt(e.currentTarget.dataset.y,10);
 
     if(currentMode()==="HCPU"){
-      game.p2 = new Player(2,"Компьютер",true);
+      game.p2 = new Player(2,"Компьютер 2",true);
+      game.p1 = new Player(1,"Игрок 1",false);
     } else {
       game.p2.isComputer = false;
       game.p1.isComputer = false;
+      game.p2.name = "Игрок 2"; game.p1.name = "Игрок 1";
     }
     const cur = game.currentPlayer();
     if(currentMode()==="HCPU" && cur.pid===2) return;
@@ -473,8 +471,8 @@
       elPass.animate([{transform:"scale(1)"},{transform:"scale(1.05)"},{transform:"scale(1)"}], {duration:220});
       return;
     }
-    game.makeMove(x,y);
-    game.scheduleNextRule(Date.now());
+    const res = game.makeMove(x,y);
+    if(res.ruleReset) game.scheduleNextRule(Date.now());
     renderCells();
 
     if(game.tryPassIfNeeded()){
@@ -500,8 +498,8 @@
     game.setRuleIntervalSec(interval);
     const mode = currentMode();
     if(mode==="HCPU"){
-      game.p2 = new Player(2, "Компьютер", true);
       game.p1 = new Player(1, "Игрок 1", false);
+      game.p2 = new Player(2, "Компьютер 2", true);
     } else if(mode==="CPUCPU"){
       game.p1 = new Player(1, "Компьютер 1", true);
       game.p2 = new Player(2, "Компьютер 2", true);
@@ -512,7 +510,7 @@
     buildGrid();
     renderCells();
     setControlsEnabled(false);
-    startUITimers();           // старт только по кнопке «Новая партия»
+    startUITimers();
     maybeAutoPlay();
   }
 
@@ -539,7 +537,7 @@
   document.getElementById("aiLevelP2").addEventListener("change", renderCells);
   document.getElementById("ruleInterval").addEventListener("change", desiredInterval);
 
-  // Первый рендер (без запуска таймеров)
+  // Первый рендер
   buildGrid();
   renderCells();
 })();
