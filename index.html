@@ -3,14 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Diagonal Squares — 40×40 (Web)</title>
+  <title>Diagonal Squares — 5×5…40×40 (Web)</title>
   <link rel="stylesheet" href="style.css" />
-  <meta name="description" content="Мини-игра на поле 40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер." />
+  <meta name="description" content="Мини-игра на поле 5×5…40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер." />
 </head>
 <body>
   <header class="topbar">
-    <h1>Diagonal Squares — 40×40</h1>
+    <h1>Diagonal Squares — 5×5…40×40</h1>
     <div class="controls">
+      <label class="size">
+        Размер:&nbsp;
+        <input id="sizeInput" type="number" min="5" max="40" value="40" />
+      </label>
       <button id="btnNew" class="btn">Новая игра</button>
       <label class="switch">
         <input type="checkbox" id="chkAI" checked />
@@ -29,14 +33,14 @@
     <details>
       <summary>Правила (кликните, чтобы раскрыть)</summary>
       <ul>
-        <li>Поле: 40×40, изначально пустое.</li>
+        <li>Поле: от 5×5 до 40×40, изначально пустое.</li>
         <li>P1 ходит первым. Ходы по очереди.</li>
         <li><b>Правило диагонали:</b> ставить в клетку нельзя, если у неё есть занятые диагональные соседи (по углам). Примыкание по сторонам разрешено.</li>
         <li>Очки за ход: <code>1 + количество занятых ортогональных соседей</code> (вверх/вниз/влево/вправо).</li>
         <li>Если у текущего игрока нет легальных ходов — он пасует, ход переходит сопернику. Два паса подряд завершают игру.</li>
         <li>Побеждает игрок с большим счётом; при равенстве — ничья.</li>
       </ul>
-      <p class="note">Замечание: в браузерах исполняется JavaScript (не Java). Этот проект — чистый HTML/CSS/JavaScript и работает офлайн.</p>
+      <p class="note">Проект работает на чистом HTML/CSS/JavaScript и не требует сервера.</p>
     </details>
   </footer>
 

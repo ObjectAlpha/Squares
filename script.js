@@ -1,16 +1,13 @@
 /* Diagonal Squares — Web (HTML/CSS/JS)
- * Правило диагонали: запрещено ставить в клетку, если у неё есть
- * занятые диагональные соседи (независимо от владельца).
- * Очки: 1 + число занятых ортогональных соседей (вверх/вниз/влево/вправо).
- * Конец игры: два паса подряд (оба игрока не могут ходить).
+ * Теперь поддерживается выбор размера поля 5..40.
+ * Размер применяется при нажатии «Новая игра».
  */
 
 (() => {
-  const SIZE = 40;
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
   const DIAG_DIRS = [[1,1],[1,-1],[-1,1],[-1,-1]];
 
-  // --- Простой баннер ошибок, чтобы видеть JS-ошибки прямо на странице ---
+  // Баннер ошибок для быстрой диагностики
   window.addEventListener("error", (e) => {
     const bar = document.createElement("div");
     bar.style.cssText = "position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#7f1d1d;padding:6px 10px;font:12px/1.2 monospace;z-index:9999;border-top:1px solid #fecaca;";
@@ -26,7 +23,7 @@
   }
 
   class Board {
-    constructor(size=SIZE){
+    constructor(size=40){
       this.size = size;
       this.grid = Array.from({length:size}, () => Array(size).fill(0));
     }
@@ -80,7 +77,7 @@
 
   class Game {
     constructor(board, p1, p2){
-      this.board = board || new Board(SIZE);
+      this.board = board || new Board(40);
       this.p1 = p1 || new Player(1,"Игрок 1",false);
       this.p2 = p2 || new Player(2,"Игрок 2",false);
       this.current = this.p1;
@@ -140,22 +137,38 @@
     }
   }
 
-  // --- UI: получение DOM-элементов (ОБЪЯВЛЯЕМ ОДИН РАЗ) ---
+  // --- UI elements ---
   const elBoard = document.getElementById("board");
   const elInfo  = document.getElementById("info");
   const elNew   = document.getElementById("btnNew");
   const elPass  = document.getElementById("btnPass");
   const elAI    = document.getElementById("chkAI");
+  const elSize  = document.getElementById("sizeInput");
 
-  let game = new Game();
+  let game = new Game();       // стартуем с 40×40 по умолчанию
   let ai = new SimpleAI();
   let vsAI = true;
 
+  function clampSize(n){
+    if(Number.isNaN(n)) return 40;
+    n = Math.floor(n);
+    if(n < 5) n = 5;
+    if(n > 40) n = 40;
+    return n;
+  }
+  function desiredSize(){
+    const n = parseInt(elSize.value, 10);
+    const c = clampSize(n);
+    if(c !== n) elSize.value = String(c);
+    return c;
+  }
+
   function buildGrid(){
+    const S = game.board.size;
+    elBoard.style.gridTemplateColumns = `repeat(${S+1}, var(--cell-size))`;
     elBoard.innerHTML = "";
-    // +1 строка/столбец для меток
-    for(let y=0;y<=SIZE;y++){
-      for(let x=0;x<=SIZE;x++){
+    for(let y=0;y<=S;y++){
+      for(let x=0;x<=S;x++){
         const div = document.createElement("div");
         if(x===0 && y===0){
           div.className = "label corner";
@@ -177,10 +190,11 @@
   }
 
   function renderCells(){
+    const S = game.board.size;
     const nodes = elBoard.children;
-    for(let y=0;y<SIZE;y++){
-      for(let x=0;x<SIZE;x++){
-        const idx = (y+1)*(SIZE+1) + (x+1);
+    for(let y=0;y<S;y++){
+      for(let x=0;x<S;x++){
+        const idx = (y+1)*(S+1) + (x+1);
         const el = nodes[idx];
         if(!el.classList.contains("cell")) continue;
         el.classList.remove("p1","p2");
@@ -193,7 +207,7 @@
 
   function updateInfo(extra=""){
     const p = game.currentPlayer();
-    let txt = `Ход: ${p.name} (P${p.pid})    Счёт — P1: ${game.scores[1]} | P2: ${game.scores[2]}`;
+    let txt = `Поле: ${game.board.size}×${game.board.size}    Ход: ${p.name} (P${p.pid})    Счёт — P1: ${game.scores[1]} | P2: ${game.scores[2]}`;
     txt += vsAI ? "    Режим: Человек vs Компьютер (P2)" : "    Режим: Человек vs Человек";
     if(extra) txt += "    " + extra;
     elInfo.textContent = txt;
@@ -208,7 +222,7 @@
     if(vsAI) game.p2 = new Player(2,"Компьютер",true);
     const cur = game.currentPlayer();
     if(cur.pid===2 && cur.isComputer){
-      return; // блокируем клики во время хода компьютера
+      return;
     }
     if(!game.board.isValidMove(cur.pid, x, y)){
       updateInfo("Недопустимый ход (проверьте правило диагонали / пустоту клетки).");
@@ -271,13 +285,15 @@
   }
 
   function newGame(){
-    game = new Game();
+    const S = desiredSize();
+    game = new Game(new Board(S));
+    buildGrid();
     renderCells();
     updateInfo("Новая партия начата.");
     if(vsAI && game.currentPlayer().pid===2) maybeAIMove();
   }
 
-  // Навешиваем обработчики (объявлены один раз)
+  // События
   elNew.addEventListener("click", () => newGame());
   elPass.addEventListener("click", () => {
     if(game.isGameOver()) return;
@@ -295,8 +311,12 @@
     vsAI = !!e.target.checked;
     updateInfo();
   });
+  elSize.addEventListener("change", () => {
+    // Ничего не перерисовываем до «Новая игра», только валидируем ввод
+    desiredSize();
+  });
 
-  // Построение и первый рендер
+  // Первая отрисовка (40×40 по умолчанию)
   buildGrid();
   renderCells();
   updateInfo();
