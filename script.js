@@ -1,7 +1,7 @@
-/* Diagonal Squares — Web
- * Изменения:
- * - Отсчёт до усиления сбрасывается ТОЛЬКО если усиление активно и фишку ставит игрок, на которого действует запрет.
- * - Везде заменены P1/P2 на «Игрок 1/Игрок 2» (в UI/сообщениях).
+/* Diagonal Squares — Web (fixed)
+ * - Default board size 15×15 on first render.
+ * - Fixed template-string bug in finishGame (no Python f-strings).
+ * - Countdown resets ONLY when enhanced rule is active and the affected player places a square.
  */
 (() => {
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
@@ -76,26 +76,22 @@
     }
     clone(){
       const b = new Board(this.size);
-      for(let y=0;y<this.size;y++){
-        b.grid[y] = this.grid[y].slice();
-      }
+      for(let y=0;y<this.size;y++){ b.grid[y] = this.grid[y].slice(); }
       return b;
     }
   }
 
   class Game {
     constructor(board, p1, p2){
-      this.board = board || new Board(40);
+      this.board = board || new Board(15);
       this.p1 = p1 || new Player(1,"Игрок 1",false);
       this.p2 = p2 || new Player(2,"Игрок 2",false);
       this.current = this.p1;
       this.scores = {1:0, 2:0};
       this._consecutivePasses = 0;
-      // Первые ходы
       this.p1HasMoved = false;
       this.p2HasMoved = false;
       this.p1FirstMove = null;
-      // Усиление
       this.ruleIntervalSec = 5;
       this.ruleActive = false;
       this.ruleForPid = null;
@@ -104,7 +100,6 @@
     currentPlayer(){ return this.current; }
     otherPlayer(){ return this.current.pid===1 ? this.p2 : this.p1; }
     isOrthAdj(a,b){ return a && b && ((Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1])) === 1); }
-
     _violatesP2FirstAdjacency(playerId, x, y){
       if(playerId !== 2) return false;
       if(this.p2HasMoved) return false;
@@ -134,8 +129,6 @@
       return moves;
     }
     hasLegalMoves(player){ return this.legalMovesFor(player.pid).length>0; }
-
-    /** Делает ход. Возвращает { pts, ruleReset } */
     makeMove(x,y){
       const pid = this.current.pid;
       const pts = this.board.placeAndScore(pid, x, y);
@@ -143,7 +136,6 @@
       else if(pid===2 && !this.p2HasMoved){ this.p2HasMoved = true; }
       this.scores[pid] += pts;
       this._consecutivePasses = 0;
-      // Сбрасываем усиление ТОЛЬКО если оно активно и ход делает тот, на кого оно действует
       let ruleReset = false;
       if(this.ruleActive && this.ruleForPid === pid){
         this.ruleActive = false; this.ruleForPid = null;
@@ -152,7 +144,6 @@
       this.current = this.otherPlayer();
       return { pts, ruleReset };
     }
-
     tryPassIfNeeded(){
       if(!this.hasLegalMoves(this.current)){
         this._consecutivePasses += 1;
@@ -181,20 +172,17 @@
   class AI {
     constructor(rng=Math){ this.rng = rng; }
     immediatePoints(board,x,y){ return 1 + board.orthogonalNeighborsCount(x,y); }
-
     _oppMovesAfter(game, me, x, y){
       const sim = cloneGame(game);
       sim.board.grid[y][x] = me.pid;
       if(me.pid===1 && !sim.p1HasMoved){ sim.p1HasMoved = true; sim.p1FirstMove = [x,y]; }
       if(me.pid===2 && !sim.p2HasMoved){ sim.p2HasMoved = true; }
-      // Сброс усиления только если ходит именно тот, на кого действует
       if(sim.ruleActive && sim.ruleForPid === me.pid){
         sim.ruleActive = false; sim.ruleForPid = null;
       }
       sim.current = (me.pid===1) ? sim.p2 : sim.p1;
       return sim.legalMovesFor(sim.current.pid).length;
     }
-
     chooseMove(game, me, level){
       const legal = game.legalMovesFor(me.pid);
       if(legal.length===0) return null;
@@ -264,10 +252,13 @@
   const elL2    = document.getElementById("aiLevelP2");
   const elInt   = document.getElementById("ruleInterval");
 
-  let game = new Game();
+  let game = new Game(new Board(parseInt(elSize.value, 10) || 15));
+  // Имена для стартовой панели
+  game.p1.name = "Игрок 1";
+  game.p2.name = "Игрок 2";
+
   let ai = new AI();
   let aiLoopId = null;
-
   let startTimeMs = null;
   let uiTimerId = null;
 
@@ -354,13 +345,12 @@
     }
     elScoreP1.textContent = game.scores[1];
     elScoreP2.textContent = game.scores[2];
-    // «Ход: …» — показываем имя игрока (Игрок/Компьютер)
     elTurnWho.textContent = game.currentPlayer().name;
     const mode = currentMode();
     elModeChip.textContent = (mode==="HH")? "Человек↔Человек" : (mode==="HCPU")? "Человек↔Компьютер" : "Компьютер↔Компьютер";
   }
 
-  function clampSize(n){ if(Number.isNaN(n)) return 40; n|=0; return Math.max(5, Math.min(40,n)); }
+  function clampSize(n){ if(Number.isNaN(n)) return 15; n|=0; return Math.max(5, Math.min(40,n)); }
   function clampInt(n){ if(Number.isNaN(n)) return 5; n|=0; return Math.max(5, Math.min(10,n)); }
   function desiredSize(){ const c = clampSize(parseInt(elSize.value,10)); elSize.value = String(c); return c; }
   function desiredInterval(){ const c = clampInt(parseInt(elInt.value,10)); elInt.value = String(c); return c; }
@@ -376,11 +366,12 @@
     stopUITimers();
     const elapsed = startTimeMs ? formatDuration(Date.now() - startTimeMs) : "00:00";
     const w = game.winner();
+    let head = manual ? "Партия завершена досрочно. " : "";
     let msg;
     if(w===null){
-      msg = (manual? "Партия завершена досрочно. " : "") + f"Ничья! Итоговый счёт: Игрок 1={game.scores[1]}  Игрок 2={game.scores[2]}\nДлительность партии: {elapsed}";
-    }else{
-      msg = (manual? "Партия завершена досрочно. " : "") + f"Победил Игрок {w}! Итоговый счёт: Игрок 1={game.scores[1]}  Игрок 2={game.scores[2]}\nДлительность партии: {elapsed}";
+      msg = `${head}Ничья! Итоговый счёт: Игрок 1=${game.scores[1]}  Игрок 2=${game.scores[2]}\nДлительность партии: ${elapsed}`;
+    } else {
+      msg = `${head}Победил Игрок ${w}! Итоговый счёт: Игрок 1=${game.scores[1]}  Игрок 2=${game.scores[2]}\nДлительность партии: ${elapsed}`;
     }
     alert(msg);
     setControlsEnabled(true);
@@ -537,7 +528,7 @@
   document.getElementById("aiLevelP2").addEventListener("change", renderCells);
   document.getElementById("ruleInterval").addEventListener("change", desiredInterval);
 
-  // Первый рендер
+  // Первый рендер (board = 15×15)
   buildGrid();
   renderCells();
 })();
