@@ -1,6 +1,10 @@
 /* Diagonal Squares — Web
- * Секундомер партии + современный визуал.
- * Режимы: HH, HCPU, CPUCPU; AI уровни: 1..3; пауза CPUCPU=0.7с.
+ * Изменения:
+ * 1) Секундомер стартует ТОЛЬКО при нажатии «Новая партия».
+ * 2) Кнопки и поля — в одной строке (см. CSS).
+ * 3) Первый ход P2 НЕ МОЖЕТ быть вплотную (ортогонально) к первому ходу P1.
+ *    (Диагональ и так запрещена глобальным правилом.)
+ * + Режимы: HH, HCPU, CPUCPU; AI уровни: 1..3; пауза CPUCPU=0.7с.
  */
 (() => {
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
@@ -8,7 +12,6 @@
   const AI_VS_AI_DELAY_MS = 700;
   const HUMAN_AI_DELAY_MS = 120;
 
-  // Показывать JS-ошибки баннером (для быстрой диагностики)
   window.addEventListener("error", (e) => {
     const bar = document.createElement("div");
     bar.style.cssText = "position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#7f1d1d;padding:6px 10px;font:12px/1.2 monospace;z-index:9999;border-top:1px solid #fecaca;";
@@ -84,12 +87,50 @@
       this.current = this.p1;
       this.scores = {1:0, 2:0};
       this._consecutivePasses = 0;
+      // Отслеживание первых ходов
+      this.p1HasMoved = false;
+      this.p2HasMoved = false;
+      this.p1FirstMove = null; // [x,y]
     }
     currentPlayer(){ return this.current; }
     otherPlayer(){ return this.current.pid===1 ? this.p2 : this.p1; }
-    hasLegalMoves(player){ return this.board.legalMoves(player.pid).length>0; }
+
+    isOrthAdj(a,b){ return a && b && ((Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1])) === 1); }
+
+    // Доп.правило: первый ход P2 не вплотную к первому ходу P1
+    _violatesP2FirstAdjacency(playerId, x, y){
+      if(playerId !== 2) return false;
+      if(this.p2HasMoved) return false; // не первый ход P2
+      if(!this.p1HasMoved || !this.p1FirstMove) return false; // P1 ещё не ходил
+      return this.isOrthAdj([x,y], this.p1FirstMove);
+    }
+
+    isValidMoveFor(playerId, x, y){
+      if(!this.board.isValidMove(playerId, x, y)) return false;
+      if(this._violatesP2FirstAdjacency(playerId, x, y)) return false;
+      return true;
+    }
+    isValidMoveCurrent(x,y){ return this.isValidMoveFor(this.current.pid, x, y); }
+
+    legalMovesFor(playerId){
+      let moves = this.board.legalMoves(playerId);
+      if(playerId===2 && !this.p2HasMoved && this.p1HasMoved && this.p1FirstMove){
+        const [fx,fy] = this.p1FirstMove;
+        moves = moves.filter(([x,y]) => (Math.abs(x-fx)+Math.abs(y-fy)) !== 1);
+      }
+      return moves;
+    }
+    hasLegalMoves(player){ return this.legalMovesFor(player.pid).length>0; }
+
     makeMove(x,y){
+      // предполагается, что вызвано после проверки isValidMoveCurrent
       const pts = this.board.placeAndScore(this.current.pid, x, y);
+      // отмечаем первые ходы
+      if(this.current.pid===1 && !this.p1HasMoved){
+        this.p1HasMoved = true; this.p1FirstMove = [x,y];
+      } else if(this.current.pid===2 && !this.p2HasMoved){
+        this.p2HasMoved = true;
+      }
       this.scores[this.current.pid] += pts;
       this._consecutivePasses = 0;
       this.current = this.otherPlayer();
@@ -110,13 +151,34 @@
       if(this.scores[2] > this.scores[1]) return 2;
       return null;
     }
+    clone(){
+      const g = new Game(this.board.clone(), new Player(1,this.p1.name,this.p1.isComputer), new Player(2,this.p2.name,this.p2.isComputer));
+      g.current = (this.current.pid===1) ? g.p1 : g.p2;
+      g.scores = {1:this.scores[1], 2:this.scores[2]};
+      g._consecutivePasses = this._consecutivePasses;
+      g.p1HasMoved = this.p1HasMoved;
+      g.p2HasMoved = this.p2HasMoved;
+      g.p1FirstMove = this.p1FirstMove ? [this.p1FirstMove[0], this.p1FirstMove[1]] : null;
+      return g;
+    }
   }
 
   class AI {
     constructor(rng=Math){ this.rng = rng; }
     immediatePoints(board,x,y){ return 1 + board.orthogonalNeighborsCount(x,y); }
-    chooseMove(board, me, level){
-      const legal = board.legalMoves(me.pid);
+
+    _oppMovesAfter(game, me, x, y){
+      const sim = game.clone();
+      // Сделаем ход как есть (проверка валидности вне, в chooseMove)
+      sim.board.grid[y][x] = me.pid;
+      if(me.pid===1 && !sim.p1HasMoved){ sim.p1HasMoved = true; sim.p1FirstMove = [x,y]; }
+      if(me.pid===2 && !sim.p2HasMoved){ sim.p2HasMoved = true; }
+      sim.current = (me.pid===1) ? sim.p2 : sim.p1;
+      return sim.legalMovesFor(sim.current.pid).length;
+    }
+
+    chooseMove(game, me, level){
+      const legal = game.legalMovesFor(me.pid);
       if(legal.length===0) return null;
       if(level === 1){
         const i = Math.floor(this.rng.random()*legal.length);
@@ -124,7 +186,7 @@
       } else if(level === 2){
         let best = []; let bestPts = -1;
         for(const [x,y] of legal){
-          const p = this.immediatePoints(board,x,y);
+          const p = this.immediatePoints(game.board,x,y);
           if(p > bestPts){ bestPts = p; best = [[x,y]]; }
           else if(p === bestPts){ best.push([x,y]); }
         }
@@ -132,13 +194,11 @@
         return best[i];
       } else {
         const center = (n)=> (n-1)/2;
-        const cx = center(board.size), cy = center(board.size);
+        const cx = center(game.board.size), cy = center(game.board.size);
         let bestScore = -1e9; let best = [];
         for(const [x,y] of legal){
-          const pts = this.immediatePoints(board,x,y);
-          const clone = board.clone();
-          clone.grid[y][x] = me.pid;
-          const oppMoves = clone.legalMoves(me.otherId()).length;
+          const pts = this.immediatePoints(game.board,x,y);
+          const oppMoves = this._oppMovesAfter(game, me, x, y);
           let score = pts*10 - oppMoves;
           const dx = Math.abs(x - cx), dy = Math.abs(y - cy);
           score += -0.01*(dx+dy);
@@ -171,26 +231,8 @@
   let aiLoopId = null;
 
   // Секундомер
-  let startTimeMs = Date.now();
+  let startTimeMs = null;
   let timerId = null;
-
-  function clampSize(n){
-    if(Number.isNaN(n)) return 40;
-    n = Math.floor(n);
-    if(n < 5) n = 5;
-    if(n > 40) n = 40;
-    return n;
-  }
-  function desiredSize(){
-    const n = parseInt(elSize.value, 10);
-    const c = clampSize(n);
-    if(c !== n) elSize.value = String(c);
-    return c;
-  }
-  function currentMode(){ return elMode.value; }
-  function p1Level(){ return parseInt(elL1.value, 10) || 1; }
-  function p2Level(){ return parseInt(elL2.value, 10) || 1; }
-
   function formatDuration(ms){
     const total = Math.floor(ms/1000);
     const s = total % 60;
@@ -258,43 +300,27 @@
     elModeChip.textContent = (mode==="HH")? "Человек↔Человек" : (mode==="HCPU")? "Человек↔Компьютер" : "Компьютер↔Компьютер";
   }
 
-  function onCellClick(e){
-    if(game.isGameOver()) return;
-    if(currentMode()==="CPUCPU") return;
-    const cell = e.currentTarget;
-    const x = parseInt(cell.dataset.x,10);
-    const y = parseInt(cell.dataset.y,10);
-
-    if(currentMode()==="HCPU"){
-      game.p2 = new Player(2,"Компьютер",true);
-    } else {
-      game.p2.isComputer = false;
-      game.p1.isComputer = false;
-    }
-    const cur = game.currentPlayer();
-    if(currentMode()==="HCPU" && cur.pid===2) return;
-
-    if(!game.board.isValidMove(cur.pid, x, y)){
-      document.getElementById("btnPass").animate([{transform:"scale(1)"},{transform:"scale(1.05)"},{transform:"scale(1)"}], {duration:220});
-      return;
-    }
-    game.makeMove(x,y);
-    renderCells();
-
-    if(game.tryPassIfNeeded()){
-      if(game.isGameOver()) return finishGame();
-    }
-    maybeAutoPlay();
+  function clampSize(n){
+    if(Number.isNaN(n)) return 40;
+    n = Math.floor(n);
+    if(n < 5) n = 5;
+    if(n > 40) n = 40;
+    return n;
   }
-
-  function stopAiLoop(){
-    if(aiLoopId !== null){ clearTimeout(aiLoopId); aiLoopId = null; }
+  function desiredSize(){
+    const n = parseInt(elSize.value, 10);
+    const c = clampSize(n);
+    if(c !== n) elSize.value = String(c);
+    return c;
   }
+  function currentMode(){ return elMode.value; }
+  function p1Level(){ return parseInt(elL1.value, 10) || 1; }
+  function p2Level(){ return parseInt(elL2.value, 10) || 1; }
 
   function finishGame(){
     renderCells();
     stopTimer();
-    const elapsed = formatDuration(Date.now() - startTimeMs);
+    const elapsed = (startTimeMs!==null) ? formatDuration(Date.now() - startTimeMs) : "00:00";
     const w = game.winner();
     let msg;
     if(w===null){
@@ -304,6 +330,10 @@
     }
     alert(msg);
     stopAiLoop();
+  }
+
+  function stopAiLoop(){
+    if(aiLoopId !== null){ clearTimeout(aiLoopId); aiLoopId = null; }
   }
 
   function maybeAutoPlay(){
@@ -320,7 +350,7 @@
         return;
       }
       setTimeout(() => {
-        const move = ai.chooseMove(game.board, game.p2, lvl);
+        const move = ai.chooseMove(game, game.p2, lvl);
         if(!move){
           if(game.tryPassIfNeeded()){
             if(game.isGameOver()) return finishGame();
@@ -349,7 +379,7 @@
           renderCells();
           return maybeAutoPlay();
         }
-        const move = ai.chooseMove(game.board, cur, lvl);
+        const move = ai.chooseMove(game, cur, lvl);
         if(!move){
           if(game.tryPassIfNeeded()){
             if(game.isGameOver()) return finishGame();
@@ -366,6 +396,35 @@
         return maybeAutoPlay();
       }, AI_VS_AI_DELAY_MS);
     }
+  }
+
+  function onCellClick(e){
+    if(game.isGameOver()) return;
+    if(currentMode()==="CPUCPU") return;
+    const cell = e.currentTarget;
+    const x = parseInt(cell.dataset.x,10);
+    const y = parseInt(cell.dataset.y,10);
+
+    if(currentMode()==="HCPU"){
+      game.p2 = new Player(2,"Компьютер",true);
+    } else {
+      game.p2.isComputer = false;
+      game.p1.isComputer = false;
+    }
+    const cur = game.currentPlayer();
+    if(currentMode()==="HCPU" && cur.pid===2) return;
+
+    if(!game.isValidMoveCurrent(x, y)){
+      document.getElementById("btnPass").animate([{transform:"scale(1)"},{transform:"scale(1.05)"},{transform:"scale(1)"}], {duration:220});
+      return;
+    }
+    game.makeMove(x,y);
+    renderCells();
+
+    if(game.tryPassIfNeeded()){
+      if(game.isGameOver()) return finishGame();
+    }
+    maybeAutoPlay();
   }
 
   function newGame(){
@@ -385,7 +444,7 @@
     }
     buildGrid();
     renderCells();
-    startTimer();
+    startTimer();            // <-- только при «Новая партия»
     maybeAutoPlay();
   }
 
@@ -410,8 +469,7 @@
   document.getElementById("aiLevelP1").addEventListener("change", () => renderCells());
   document.getElementById("aiLevelP2").addEventListener("change", () => renderCells());
 
-  // Первая отрисовка
+  // Первая отрисовка (без старта таймера!)
   buildGrid();
   renderCells();
-  startTimer(); // если пользователь начнёт сразу
 })();
