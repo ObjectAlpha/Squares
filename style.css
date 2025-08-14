@@ -52,6 +52,9 @@ body{
 .controls input[type=number]:focus, .controls select:focus{
   outline:none; border-color:#6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.2);
 }
+.controls :disabled{
+  opacity:.65; cursor:not-allowed; filter:saturate(60%);
+}
 .btn{
   display:inline-flex; align-items:center; gap:8px;
   border-radius:14px; padding:10px 14px; font-weight:600; cursor:pointer;
@@ -79,8 +82,10 @@ body{
 .chip-p1{ background: #e0ecff; border-color:#bfd4ff; }
 .chip-p2{ background: #ffe1e1; border-color:#ffc2c2; }
 .chip-time{ background:#e7f5ff; border-color:#c2e7ff; }
+.chip-rule{ background:#f0fdf4; border-color:#bbf7d0; }
 .chip-turn{ background:#fef9c3; border-color:#fde68a; }
 .chip-mode{ background:#ecfdf5; border-color:#bbf7d0; }
+
 .board-wrap{ padding:16px; display:flex; justify-content:center; }
 .grid{
   display:grid;

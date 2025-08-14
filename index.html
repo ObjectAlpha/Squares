@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Diagonal Squares — 5×5…40×40 (Web)</title>
   <link rel="stylesheet" href="style.css" />
-  <meta name="description" content="Мини-игра на поле 5×5…40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер, Компьютер vs Компьютер. Секундомер партии." />
+  <meta name="description" content="Мини-игра на поле 5×5…40×40 с запретом диагонального примыкания. Режимы: Человек vs Человек, Человек vs Компьютер, Компьютер vs Компьютер. Периодическое усиленное правило." />
 </head>
 <body>
   <header class="topbar">
@@ -47,6 +47,11 @@
         </select>
       </label>
 
+      <label class="interval" title="Через сколько секунд включать усиленное правило (5–10)">
+        Правило каждые (сек)
+        <input id="ruleInterval" type="number" min="5" max="10" value="5" />
+      </label>
+
       <button id="btnNew" class="btn btn-primary">
         <span class="ico">⟳</span> Новая партия
       </button>
@@ -59,6 +64,7 @@
       <span class="chip chip-p1">P1: <b id="scoreP1">0</b></span>
       <span class="chip chip-p2">P2: <b id="scoreP2">0</b></span>
       <span class="chip chip-time">⏱ <b id="timer">00:00</b></span>
+      <span class="chip chip-rule" id="ruleChip">Правило: —</span>
       <span class="chip chip-turn">Ход: <b id="turnWho">P1</b></span>
       <span class="chip chip-mode" id="modeChip">Режим</span>
     </div>
@@ -77,9 +83,8 @@
         <li><b>Правило диагонали:</b> ставить нельзя, если у клетки есть занятые диагональные соседи.</li>
         <li>Очки за ход: <code>1 + число занятых ортогональных соседей</code>.</li>
         <li>Если у текущего игрока нет легальных ходов — пасует. Два паса подряд завершают игру.</li>
-        <li>Побеждает игрок с большим счётом; при равенстве — ничья.</li>
+        <li>Периодическое усиление: каждые <b>N</b> секунд (N=5..10) активируется запрет ставить фишку вплотную по стороне к <u>любой</u> занятой клетке. Усиление действует на игрока, чей ход в момент срабатывания, и сбрасывается после <u>любой</u> постановки фишки. На панели показано, к кому применено правило.</li>
       </ul>
-      <p class="note">В режиме «Компьютер ↔ Компьютер» между ходами пауза 0.7 сек. Секундомер стартует при «Новая партия».</p>
     </details>
   </footer>
 
