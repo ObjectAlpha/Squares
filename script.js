@@ -10,6 +10,14 @@
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
   const DIAG_DIRS = [[1,1],[1,-1],[-1,1],[-1,-1]];
 
+  // --- Простой баннер ошибок, чтобы видеть JS-ошибки прямо на странице ---
+  window.addEventListener("error", (e) => {
+    const bar = document.createElement("div");
+    bar.style.cssText = "position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#7f1d1d;padding:6px 10px;font:12px/1.2 monospace;z-index:9999;border-top:1px solid #fecaca;";
+    bar.textContent = "JS error: " + (e.message || "unknown");
+    document.body.appendChild(bar);
+  });
+
   class Player {
     constructor(pid, name, isComputer=false){
       this.pid = pid; this.name = name; this.isComputer = isComputer;
@@ -46,7 +54,6 @@
       return c;
     }
     legalMoves(playerId){
-      // Проход по всему полю — 1600 клеток, быстро
       const res=[];
       for(let y=0;y<this.size;y++){
         for(let x=0;x<this.size;x++){
@@ -108,9 +115,7 @@
   }
 
   class SimpleAI {
-    constructor(rng=Math){
-      this.rng = rng;
-    }
+    constructor(rng=Math){ this.rng = rng; }
     immediatePoints(board,x,y){ return 1 + board.orthogonalNeighborsCount(x,y); }
     chooseMove(board, me){
       const legal = board.legalMoves(me.pid);
@@ -119,7 +124,6 @@
       let bestMoves = [];
       for(const [x,y] of legal){
         const immediate = this.immediatePoints(board,x,y);
-        // Копия для подсчёта ответных ходов соперника
         const clone = board.clone();
         clone.grid[y][x] = me.pid;
         const oppMovesCount = clone.legalMoves(me.otherId()).length;
@@ -131,18 +135,17 @@
           bestMoves.push([x,y]);
         }
       }
-      // случайный среди лучших
       const i = Math.floor(this.rng.random()*bestMoves.length);
       return bestMoves[i];
     }
   }
 
-  // --- UI ---
+  // --- UI: получение DOM-элементов (ОБЪЯВЛЯЕМ ОДИН РАЗ) ---
   const elBoard = document.getElementById("board");
-  const elInfo = document.getElementById("info");
-  const elNew = document.getElementById("btnNew");
-  const elPass = document.getElementById("btnPass");
-  const elAI = document.getElementById("chkAI");
+  const elInfo  = document.getElementById("info");
+  const elNew   = document.getElementById("btnNew");
+  const elPass  = document.getElementById("btnPass");
+  const elAI    = document.getElementById("chkAI");
 
   let game = new Game();
   let ai = new SimpleAI();
@@ -150,23 +153,22 @@
 
   function buildGrid(){
     elBoard.innerHTML = "";
-    // 41x41: [0,0] — угол; строка/столбец 0 — метки
+    // +1 строка/столбец для меток
     for(let y=0;y<=SIZE;y++){
       for(let x=0;x<=SIZE;x++){
         const div = document.createElement("div");
         if(x===0 && y===0){
           div.className = "label corner";
-          div.textContent = "";
         } else if(y===0){
           div.className = "label";
-          div.textContent = x-1>=0?x-1:"";
+          div.textContent = x-1>=0 ? (x-1) : "";
         } else if(x===0){
           div.className = "label";
-          div.textContent = y-1>=0?y-1:"";
+          div.textContent = y-1>=0 ? (y-1) : "";
         } else {
           div.className = "cell";
-          div.dataset.x = (x-1).toString();
-          div.dataset.y = (y-1).toString();
+          div.dataset.x = String(x-1);
+          div.dataset.y = String(y-1);
           div.addEventListener("click", onCellClick);
         }
         elBoard.appendChild(div);
@@ -206,7 +208,7 @@
     if(vsAI) game.p2 = new Player(2,"Компьютер",true);
     const cur = game.currentPlayer();
     if(cur.pid===2 && cur.isComputer){
-      return;
+      return; // блокируем клики во время хода компьютера
     }
     if(!game.board.isValidMove(cur.pid, x, y)){
       updateInfo("Недопустимый ход (проверьте правило диагонали / пустоту клетки).");
@@ -275,12 +277,7 @@
     if(vsAI && game.currentPlayer().pid===2) maybeAIMove();
   }
 
-  const elBoard = document.getElementById("board");
-  const elInfo = document.getElementById("info");
-  const elNew = document.getElementById("btnNew");
-  const elPass = document.getElementById("btnPass");
-  const elAI = document.getElementById("chkAI");
-
+  // Навешиваем обработчики (объявлены один раз)
   elNew.addEventListener("click", () => newGame());
   elPass.addEventListener("click", () => {
     if(game.isGameOver()) return;
