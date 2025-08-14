@@ -1,4 +1,4 @@
-/* Diagonal Squares — Web (line-limit + diagonal toggle) */
+/* Diagonal Squares — Web (end-on-no-enhanced-move) */
 (() => {
   const ORTHO_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
   const DIAG_DIRS = [[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -78,10 +78,13 @@
       this.p1HasMoved = false;
       this.p2HasMoved = false;
       this.p1FirstMove = null;
+      // periodic rule
       this.ruleIntervalSec = 5;
       this.ruleActive = false;
       this.ruleForPid = null;
       this.nextRuleTs = null;
+      this.enhancedImpossible = false;
+      // custom rules
       this.maxLineLen = this.board.size;
       this.diagEnabled = true;
     }
@@ -90,6 +93,7 @@
     setLineLimit(n){ this.maxLineLen = Math.max(1, Math.min(this.board.size, n|0)); }
     setDiagEnabled(flag){ this.diagEnabled = !!flag; }
     isOrthAdj(a,b){ return a && b && ((Math.abs(a[0]-b[0]) + Math.abs(a[1]-b[1])) === 1); }
+
     _exceedsLineLimit(x,y){
       const g = this.board.grid, S = this.board.size, L = this.maxLineLen;
       let len = 1;
@@ -135,7 +139,17 @@
       moves = moves.filter(([x,y]) => !this._exceedsLineLimit(x,y));
       return moves;
     }
+    // Moves that satisfy enhancement (when active). If diag is OFF, require also no diag adjacency.
+    enhancedMovesFor(playerId){
+      if(!this.ruleActive || this.ruleForPid !== playerId) return this.legalMovesFor(playerId);
+      let moves = this.legalMovesFor(playerId);
+      if(!this.diagEnabled){
+        moves = moves.filter(([x,y]) => !this.board.hasDiagOccupied(x,y));
+      }
+      return moves;
+    }
     hasLegalMoves(player){ return this.legalMovesFor(player.pid).length>0; }
+
     makeMove(x,y){
       const pid = this.current.pid;
       const pts = this.board.placeAndScore(pid, x, y);
@@ -149,8 +163,10 @@
         ruleReset = true;
       }
       this.current = this.otherPlayer();
+      this.enhancedImpossible = false; // будет пересчитано при следующем срабатывании
       return { pts, ruleReset };
     }
+
     tryPassIfNeeded(){
       if(!this.hasLegalMoves(this.current)){
         this._consecutivePasses += 1;
@@ -172,6 +188,9 @@
       if(!this.ruleActive && this.nextRuleTs!==null && nowMs >= this.nextRuleTs){
         this.ruleActive = true;
         this.ruleForPid = this.current.pid;
+        // Проверяем немедленно: есть ли вообще ходы, удовлетворяющие усилению
+        const em = this.enhancedMovesFor(this.current.pid);
+        this.enhancedImpossible = (em.length === 0);
       }
     }
     clone(){
@@ -188,6 +207,7 @@
       g2.nextRuleTs = this.nextRuleTs;
       g2.maxLineLen = this.maxLineLen;
       g2.diagEnabled = this.diagEnabled;
+      g2.enhancedImpossible = this.enhancedImpossible;
       return g2;
     }
   }
@@ -286,6 +306,11 @@
       const now = Date.now();
       elTimer.textContent = formatDuration(now - startTimeMs);
       game.pollRule(now);
+      // Автозавершение: усиление активно и нет ни одного «усиленного» хода
+      if(game.ruleActive && game.ruleForPid === game.current.pid && game.enhancedImpossible){
+        finishGame();
+        return;
+      }
       updateCountdown(now);
     }, 100);
   }
@@ -335,18 +360,31 @@
     }
   }
 
+  
   function renderCells(){
     const S = game.board.size;
+    // Собираем множество «усиленных» допустимых ходов для подсветки
+    let enhSet = null;
+    if(game.ruleActive && game.ruleForPid === game.current.pid){
+      try{
+        const moves = game.enhancedMovesFor(game.current.pid);
+        enhSet = new Set(moves.map(([x,y]) => `${x},${y}`));
+      }catch(e){ enhSet = null; }
+    }
+
     const nodes = elBoard.children;
     for(let y=0;y<S;y++){
       for(let x=0;x<S;x++){
         const idx = (y+1)*(S+1) + (x+1);
         const el = nodes[idx];
         if(!el.classList.contains("cell")) continue;
-        el.classList.remove("p1","p2");
+        el.classList.remove("p1","p2","enh");
         const pid = game.board.grid[y][x];
         if(pid===1) el.classList.add("p1");
         else if(pid===2) el.classList.add("p2");
+        else if(enhSet && enhSet.has(`${x},${y}`)){
+          el.classList.add("enh");
+        }
       }
     }
     elScoreP1.textContent = game.scores[1];
@@ -355,6 +393,7 @@
     const mode = currentMode();
     elModeChip.textContent = (mode==="HH")? "Человек↔Человек" : (mode==="HCPU")? "Человек↔Компьютер" : "Компьютер↔Компьютер";
   }
+}
 
   function clampSize(n){ if(Number.isNaN(n)) return 15; n|=0; return Math.max(5, Math.min(40,n)); }
   function clampInt(n){ if(Number.isNaN(n)) return 5; n|=0; return Math.max(5, Math.min(10,n)); }
@@ -473,7 +512,7 @@
     if(currentMode()==="HCPU" && cur.pid===2) return;
 
     if(!game.isValidMoveFor(cur.pid, x, y)){
-      elPass.animate([{transform:"scale(1)"},{transform:"scale(1.05)"},{transform:"scale(1)"}], {duration:220});
+      document.getElementById("btnPass").animate([{transform:"scale(1)"},{transform:"scale(1.05)"},{transform:"scale(1)"}], {duration:220});
       return;
     }
     const res = game.makeMove(x,y);
